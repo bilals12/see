@@ -4,6 +4,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <math.h>
+#include <stdlib.h>
 
 #define INTERVAL 600  // log data every 10 mins
 #define HOURS_TO_SECONDS(x) ((x) * 3600)
@@ -74,6 +75,9 @@ void logDataToFile() {
         fprintf(cumulativeFile, "rightclicks,%llu\n", cumulative_right_clicks);
         fprintf(cumulativeFile, "middleclicks,%llu\n", cumulative_middle_clicks);
         fclose(cumulativeFile);
+        printf("cumulative data logged successfully!\n");
+    } else {
+        perror("error opening cumulative_data.csv");
     }
 
     // log past 24 hours
@@ -112,9 +116,45 @@ void logDataToFile() {
 
         fclose(past24HoursFile);
     }
+    // printf("Current cumulative values: keypresses=%llu, mousemoves=%.2f, leftclicks=%llu, rightclicks=%llu, middleclicks=%llu\n",
+    //        cumulative_keypresses, cumulative_mouse_moves, cumulative_left_clicks, cumulative_right_clicks, cumulative_middle_clicks);
+}
+
+// updating git
+void update_github() {
+    time_t now = time(NULL);
+    char timestamp[26];
+    strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", localtime(&now));
+
+    char commit_message[100];
+    snprintf(commit_message, sizeof(commit_message), "update event data - %s", timestamp);
+
+    printf("attempting to update github @ %s...\n", timestamp);
+
+    int result = system("git add cumulative_data.csv past_24_hours_data.csv");
+    if (result != 0) {
+        fprintf(stderr, "error adding files to git\n");
+        return;
+    }
+
+    char git_commit_command[150];
+    snprintf(git_commit_command, sizeof(git_commit_command), "git commit -m \"%s\"", commit_message);
+    result = system(git_commit_command);
+    if (result != 0) {
+        fprintf(stderr, "error committing changes\n");
+        return;
+    }
+
+    result = system("git push origin main");
+    if (result != 0) {
+        fprintf(stderr, "error pushing to git\n");
+        return;
+    }
+    printf("git update successful!\n");
 }
 
 void storeAndLogData() {
+    time_t last_github_update = 0;
     while (1) {
         // save current data to history
         time_t now = time(NULL);
@@ -123,6 +163,12 @@ void storeAndLogData() {
 
         // log data to files
         logDataToFile();
+
+        // update git every hour
+        if (now - last_github_update >= 3600) {
+            update_github();
+            last_github_update = now;
+        }
 
         // move to next index
         currentIndex = (currentIndex + 1) % DATA_POINTS;
@@ -139,6 +185,12 @@ void storeAndLogData() {
 }
 
 int main(int argc, char *argv[]) {
+    char cwd[1024];
+    if (getcwd(cwd, sizeof(cwd)) != NULL) {
+        printf("current working directory: %s\n", cwd);
+    } else {
+        perror("getcwd() error");
+    }
     // set-up event tap
     CGEventMask eventMask = (1 << kCGEventKeyDown) | (1 << kCGEventLeftMouseDown) |
                             (1 << kCGEventRightMouseDown) | (1 << kCGEventMouseMoved) |

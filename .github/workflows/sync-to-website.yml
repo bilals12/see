@@ -1,0 +1,37 @@
+name: Sync files to website repo
+
+on:
+  push:
+    paths:
+      - '*.csv'
+      - 'visualization.js'
+  schedule:
+    - cron: '0 * * * *'  # Run every hour
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout see repo
+      uses: actions/checkout@v2
+      with:
+        path: see
+
+    - name: Checkout website repo
+      uses: actions/checkout@v2
+      with:
+        repository: bilals12/website
+        token: ${{ secrets.WEBSITE_REPO_TOKEN }}
+        path: website
+
+    - name: Sync files
+      run: |
+        mkdir -p website/static/js
+        cp see/*.csv website/static/
+        cp see/visualization.js website/static/js/
+        cd website
+        git config user.name github-actions
+        git config user.email github-actions@github.com
+        git add .
+        git diff --quiet && git diff --staged --quiet || git commit -m "Sync CSV and JS files from see repo"
+        git push
