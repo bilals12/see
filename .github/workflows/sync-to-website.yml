@@ -1,6 +1,7 @@
 name: Sync files to website repo
 
 on:
+  workflow_dispatch:
   push:
     paths:
       - '*.csv'
