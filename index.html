@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>acmon</title>
+    <style>
+        body {
+            background-color: #1c1c1c;
+            color: #00FF00;
+            font-family: "Noto Sans", sans-serif;
+        }
+        #cumulative-data {
+            text-align: center;
+            font-size: 24px;
+        }
+        #cumulative-data div {
+            display: inline-block;
+            margin: 0 15px;
+        }
+        #chart {
+            display: block;
+            margin: 0 auto;
+            background-color: rgba(0, 0, 0, 0.8);
+            width: 100%;
+            max-width: 800px;
+            height: 400px;
+        }
+        .tooltip {
+            position: absolute;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: #00FF00;
+            padding: 10px;
+            border-radius: 5px;
+            pointer-events: none;
+        }
+        
+    </style>
+    <!-- include D3.js -->
+    <script src="https://d3js.org/d3.v6.min.js"></script>
+</head>
+<body>
+    <div id="cumulative-data">
+        <div style="color: pink;">left clicks: <span id="leftclicks">0</span></div>
+        <div style="color: orange;">right clicks: <span id="rightclicks">0</span></div>
+        <div style="color: lightblue;">keypresses: <span id="keypresses">0</span></div>
+        <div style="color: lightgreen;">mouse movement: <span id="mousemoves">0m</span></div>
+    </div>
+    <div id="chart"></div>
+
+    <!-- include custom visualization script -->
+    <script src="visualization.js"></script>
+</body>
+</html>
