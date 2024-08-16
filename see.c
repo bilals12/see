@@ -24,7 +24,7 @@ ActivityData data = {0};
 ActivityData history[DATA_POINTS] = {0};
 int currentIndex = 0;
 
-// Cumulative counts
+// cumulative counts
 unsigned long long cumulative_keypresses = 0;
 double cumulative_mouse_moves = 0.0;
 unsigned long long cumulative_left_clicks = 0;
