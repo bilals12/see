@@ -131,12 +131,21 @@ void update_github() {
 
     printf("attempting to update github @ %s...\n", timestamp);
 
-    int result = system("git add cumulative_data.csv past_24_hours_data.csv");
+    // pull latest changes from remote
+    int result = system("git pull origin main --rebase");
+    if (result != 0) {
+        fprintf(stderr, "error pulling latest changes from git\n");
+        return;
+    }
+
+    // add updated files to git
+    result = system("git add cumulative_data.csv past_24_hours_data.csv");
     if (result != 0) {
         fprintf(stderr, "error adding files to git\n");
         return;
     }
 
+    // commit changes + message
     char git_commit_command[150];
     snprintf(git_commit_command, sizeof(git_commit_command), "git commit -m \"%s\"", commit_message);
     result = system(git_commit_command);
@@ -145,6 +154,7 @@ void update_github() {
         return;
     }
 
+    // push changes to remote
     result = system("git push origin main");
     if (result != 0) {
         fprintf(stderr, "error pushing to git\n");
