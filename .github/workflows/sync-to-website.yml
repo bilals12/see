@@ -35,8 +35,7 @@ jobs:
         git config user.name github-actions
         git config user.email github-actions@github.com
         git add .
-        git status
-        git diff --staged --quiet || (git commit -m "Sync CSV and JS files from see repo" && git push) || echo "No changes to commit"
+        git commit -m "Sync CSV and JS files from see repo" || echo "No changes to commit"
+        git push || echo "Push failed"
       env:
         GITHUB_TOKEN: ${{ secrets.WEBSITE_REPO_TOKEN }}
-        
