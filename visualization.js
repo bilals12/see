@@ -35,14 +35,21 @@ function parseCSV(data) {
     const lines = data.split('\n').slice(1); // skip header row
     const parsedData = lines.map(line => {
         const [timestamp, keypresses, mousemoves, leftclicks, rightclicks] = line.split(',');
+        
+        // exclude rows without valid timestamps
+        if (timestamp === 'cumulative' || isNaN(Number(timestamp))) return null;
+
         return {
-            timestamp: new Date(Number(timestamp) * 1000), // convert unix timestamp to JS date
-            keypresses: parseInt(keypresses, 10) || 0,
+            timestamp: new Date(Number(timestamp) * 1000), // convert Unix timestamp to JS date
+            keypresses: parseInt(keypresses, 10) || 0, // actual value at this time
             mousemoves: mousemoves ? parseFloat(mousemoves.replace(' meters', '')) : 0,
-            leftclicks: parseInt(leftclicks, 10) || 0,
-            rightclicks: parseInt(rightclicks, 10) || 0
+            leftclicks: parseInt(leftclicks, 10) || 0, // actual value at this time
+            rightclicks: parseInt(rightclicks, 10) || 0 // actual value at this time
         };
-    }).filter(d => !isNaN(d.timestamp.getTime()) && d.timestamp.getTime() > 0);
+    }).filter(d => d !== null && !isNaN(d.timestamp.getTime()) && d.timestamp.getTime() > 0);
+
+    // parsedData sorted by timestamp
+    parsedData.sort((a, b) => a.timestamp - b.timestamp);
 
     return parsedData;
 }
@@ -70,8 +77,9 @@ function renderChart(data) {
 
     x.domain([new Date(endTime.getTime() - 12 * 60 * 60 * 1000), endTime]);
 
-    // calculate max value for y-axis
+    // calculate max/min value for y-axis
     const yMax = d3.max(data, d => Math.max(d.keypresses, d.leftclicks, d.rightclicks));
+    //const yMin = d3.min(data, d => Math.min(d.keypresses, d.leftclicks, d.rightclicks));
     y.domain([0, yMax * 1.05]); // add 5% padding to top
 
     // create x-axis with dynamic time intervals
