@@ -1,129 +1,84 @@
-compile with `gcc`:
+# see - Personal Computer Activity Monitor
 
+A lightweight tool to track and visualize your computer usage patterns, including keyboard and mouse activity.
+
+## Features
+- Tracks keypresses, mouse clicks, and mouse movement
+- Converts mouse movement to meters
+- Maintains 24-hour rolling history
+- Auto-syncs data to GitHub
+- Web visualization interface
+
+## Installation
+
+### Prerequisites
+- macOS (requires Accessibility permissions)
+- gcc compiler
+- curl library
+- GitHub Personal Access Token (for data sync)
+
+### Setup
+1. Clone the repository:
 ```bash
-gcc -o see see.c -framework ApplicationServices -lpthread -lm
+git clone https://github.com/bilals12/see.git
+cd see
 ```
 
-run `see` as sudo:
+2. Create environment file:
 ```bash
-sudo ./see
+echo "GITHUB_TOKEN=your_token_here" > .env
+echo "GITHUB_REPO=your_username/your_repo" >> .env
 ```
 
-run in background using `nohup`:
+3. Compile the program:
 ```bash
-nohup ./see &
+gcc -o see see.c -framework ApplicationServices -pthread -lcurl
 ```
 
-this automatically saves `stdout` and `stderr` to a file `nohup.out`
-you can change the file to something else:
+4. Grant Accessibility permissions:
+- Go to System Settings > Privacy & Security > Accessibility
+- Add the compiled 'see' executable
 
+## Usage
+
+### Running the Program
+```bash
+./see
+```
+
+### Running in Background
 ```bash
 nohup ./see > output.log 2>&1 &
 ```
 
-check to see if it's running:
+### Process Management
+Check if running:
 ```bash
 ps -ef | grep see
 ```
 
-kill process: `kill <PID>` or `kill -9 <PID>`
+Stop the program:
+```bash
+kill $(pgrep see)
+```
 
-debugging with `lldb`
+## Data Files
+- `cumulative_data.csv`: Lifetime statistics
+- `past_24_hours_data.csv`: Rolling 24-hour data in 10-minute intervals
 
+## Debugging
+
+Using LLDB:
 ```bash
 lldb ./see
 run
 ```
 
-try to modify event tap location
+## Web Interface
+Open `index.html` in a browser to view the visualization dashboard.
 
-```c
-CFMachPortRef eventTap = CGEventTapCreate(kCGHIDEventTap,
-                                          kCGHeadInsertEventTap,
-                                          0,
-                                          eventMask,
-                                          eventCallback,
-                                          NULL);
-```
+## Contributing
+Pull requests are welcome. For major changes, please open an issue first.
 
-run as sudo:
-
-```bash
-sudo ./see
-```
-
-check for existing event taps
-
-```bash
-ioreg -l -w 0 | grep IOHIDEventSystem
-```
-
-remove `CGEventTapIsEnabled` -> fixes seg faults
-
-events not being recorded?
-
-check event mask
-
-change `CGEventTapCreate`:
-
-```c
-CFMachPortRef eventTap = CGEventTapCreate(kCGAnnotatedSessionEventTap, kCGHeadInsertEventTap, 0, eventMask, eventCallback, NULL);
-```
-
-check event tap status
-
-```c
-if (!CGEventTapIsEnabled(eventTap)) {
-    CGEventTapEnable(eventTap, true);
-    printf("Re-enabled the event tap.\n");
-}
-```
-
-test program:
-
-```c
-#include <ApplicationServices/ApplicationServices.h>
-#include <stdio.h>
-
-CGEventRef eventCallback(CGEventTapProxy proxy, CGEventType type, CGEventRef event, void *refcon) {
-    printf("Event detected! Type: %d\n", type);
-    return event;
-}
-
-int main() {
-    CGEventMask eventMask = (1 << kCGEventKeyDown) | (1 << kCGEventLeftMouseDown) |
-                            (1 << kCGEventRightMouseDown) | (1 << kCGEventMouseMoved) |
-                            (1 << kCGEventOtherMouseDown);
-
-    CFMachPortRef eventTap = CGEventTapCreate(kCGAnnotatedSessionEventTap,
-                                              kCGHeadInsertEventTap,
-                                              0,
-                                              eventMask,
-                                              eventCallback,
-                                              NULL);
-
-    if (!eventTap) {
-        fprintf(stderr, "Failed to create event tap!\n");
-        return 1;
-    }
-
-    CFRunLoopSourceRef runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0);
-    CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, kCFRunLoopCommonModes);
-    CGEventTapEnable(eventTap, true);
-
-    printf("Event tap created and enabled.\n");
-
-    CFRunLoopRun();  // Run the loop to keep capturing events
-
-    CFRelease(eventTap);
-    CFRelease(runLoopSource);
-
-    return 0;
-}
-```
-
-if test program works, it means there might be event/run loop handling issues and/or threading conflicts.
-
-}
-
-```
+## License
+[MIT](https://choosealicense.com/licenses/mit/)

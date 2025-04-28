@@ -5,6 +5,8 @@
 #include <unistd.h>
 #include <math.h>
 #include <stdlib.h>
+#include <curl/curl.h>
+#include <string.h>
 
 #define INTERVAL 600  // log data every 10 mins
 #define HOURS_TO_SECONDS(x) ((x) * 3600)
@@ -35,6 +37,13 @@ unsigned long long cumulative_middle_clicks = 0;
 double last_mouse_x = -1.0, last_mouse_y = -1.0;
 
 CGEventRef eventCallback(CGEventTapProxy proxy, CGEventType type, CGEventRef event, void *refcon) {
+    static int eventCount = 0;
+    eventCount++;
+    
+    if (eventCount % 100 == 0) {  // Log every 100 events
+        printf("Processed %d events\n", eventCount);
+    }
+
     if (type == kCGEventKeyDown) {
         data.keypresses++;
         cumulative_keypresses++;
@@ -64,61 +73,92 @@ CGEventRef eventCallback(CGEventTapProxy proxy, CGEventType type, CGEventRef eve
     return event;
 }
 
+void load_env() {
+    FILE *env_file = fopen(".env", "r");
+        if (!env_file) {
+            fprintf(stderr, ".env file not found\n");
+            return;
+        }
+
+        char line[256];
+        while (fgets(line, sizeof(line), env_file)) {
+            char *newline = strchr(line, '\n');
+            if (newline) *newline = 0;
+
+            char *equals = strchr(line, '=');
+            if (!equals) continue;
+
+            *equals = 0;
+            const char *key = line;
+            const char *value = equals + 1;
+
+            setenv(key, value, 1);
+        }
+
+        fclose(env_file);
+}
+
 void logDataToFile() {
-    // log cumulative counts
+    // Log cumulative counts
     FILE *cumulativeFile = fopen("cumulative_data.csv", "w");
     if (cumulativeFile) {
-        fprintf(cumulativeFile, "event,count\n");
-        fprintf(cumulativeFile, "keypresses,%llu\n", cumulative_keypresses);
-        fprintf(cumulativeFile, "mousemoves,%.2f meters\n", cumulative_mouse_moves);
-        fprintf(cumulativeFile, "leftclicks,%llu\n", cumulative_left_clicks);
-        fprintf(cumulativeFile, "rightclicks,%llu\n", cumulative_right_clicks);
-        fprintf(cumulativeFile, "middleclicks,%llu\n", cumulative_middle_clicks);
+        fprintf(cumulativeFile, "keypresses,mousemoves,leftclicks,rightclicks,middleclicks\n");
+        fprintf(cumulativeFile, "%llu,%.2f,%llu,%llu,%llu\n",
+                cumulative_keypresses,
+                cumulative_mouse_moves,
+                cumulative_left_clicks,
+                cumulative_right_clicks,
+                cumulative_middle_clicks);
         fclose(cumulativeFile);
-        printf("cumulative data logged successfully!\n");
-    } else {
-        perror("error opening cumulative_data.csv");
+        printf("Wrote cumulative data: %llu keypresses, %.2f moves, %llu left, %llu right\n",
+               cumulative_keypresses, cumulative_mouse_moves, 
+               cumulative_left_clicks, cumulative_right_clicks);
     }
 
-    // log past 24 hours
+    // Log past 24 hours
     FILE *past24HoursFile = fopen("past_24_hours_data.csv", "w");
     if (past24HoursFile) {
+        fprintf(past24HoursFile, "timestamp,keypresses,mousemoves,leftclicks,rightclicks,middleclicks\n");
+        
+        time_t now = time(NULL);
         unsigned long long past24_keypresses = 0;
         double past24_mouse_moves = 0.0;
         unsigned long long past24_left_clicks = 0;
         unsigned long long past24_right_clicks = 0;
         unsigned long long past24_middle_clicks = 0;
 
-        fprintf(past24HoursFile, "timestamp,keypresses,mousemoves,leftclicks,rightclicks,middleclicks\n");
         for (int i = 0; i < DATA_POINTS; i++) {
-            int index = (currentIndex + i) % DATA_POINTS;
-            if (history[index].timestamp != 0) {
+            if (history[i].timestamp > now - (24 * 3600)) {  // Only last 24h
                 fprintf(past24HoursFile, "%ld,%d,%.2f,%d,%d,%d\n",
-                        history[index].timestamp,
-                        history[index].keypresses,
-                        history[index].mouse_moves,
-                        history[index].left_clicks,
-                        history[index].right_clicks,
-                        history[index].middle_clicks);
+                        history[i].timestamp,
+                        history[i].keypresses,
+                        history[i].mouse_moves,
+                        history[i].left_clicks,
+                        history[i].right_clicks,
+                        history[i].middle_clicks);
 
-                past24_keypresses += history[index].keypresses;
-                past24_mouse_moves += history[index].mouse_moves;
-                past24_left_clicks += history[index].left_clicks;
-                past24_right_clicks += history[index].right_clicks;
-                past24_middle_clicks += history[index].middle_clicks;
+                past24_keypresses += history[i].keypresses;
+                past24_mouse_moves += history[i].mouse_moves;
+                past24_left_clicks += history[i].left_clicks;
+                past24_right_clicks += history[i].right_clicks;
+                past24_middle_clicks += history[i].middle_clicks;
             }
         }
 
-        // append cumulative summary for 24h
-        fprintf(past24HoursFile, "cumulative, %llu, %.2f meters, %llu, %llu, %llu\n",
+        // Add cumulative line for last 24h
+        fprintf(past24HoursFile, "cumulative,%llu,%.2f meters,%llu,%llu,%llu\n",
                 past24_keypresses, past24_mouse_moves,
                 past24_left_clicks, past24_right_clicks, past24_middle_clicks);
-
+        
         fclose(past24HoursFile);
+        printf("Updated past 24 hours data with %d entries\n", currentIndex);
     }
-    // printf("Current cumulative values: keypresses=%llu, mousemoves=%.2f, leftclicks=%llu, rightclicks=%llu, middleclicks=%llu\n",
-    //        cumulative_keypresses, cumulative_mouse_moves, cumulative_left_clicks, cumulative_right_clicks, cumulative_middle_clicks);
 }
+
+// new helper funcs
+size_t write_callback(void *contents, size_t size, size_t nmemb, void *userp) {
+    return size * nmemb; // discard response
+} 
 
 // updating git
 void update_github() {
@@ -126,75 +166,139 @@ void update_github() {
     char timestamp[26];
     strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", localtime(&now));
 
-    char commit_message[100];
-    snprintf(commit_message, sizeof(commit_message), "update event data - %s", timestamp);
-
     printf("attempting to update github @ %s...\n", timestamp);
 
-    // pull latest changes from remote
-    int result = system("git pull origin main --rebase");
-    if (result != 0) {
-        fprintf(stderr, "error pulling latest changes from git\n");
+    CURL *curl;
+    CURLcode res;
+
+    // init curl
+    curl = curl_easy_init();
+    if (!curl) {
+        fprintf(stderr, "curl initialization failed\n");
         return;
     }
 
-    // add updated files to git
-    result = system("git add cumulative_data.csv past_24_hours_data.csv");
-    if (result != 0) {
-        fprintf(stderr, "error adding files to git\n");
+    // read files into memory
+    FILE *cumulative = fopen("cumulative_data.csv", "rb");
+    FILE *past24 = fopen("past_24_hours_data.csv", "rb");
+
+    if (!cumulative) {
+        fprintf(stderr, "failed to open cumulative_data.csv: %s\n", strerror(errno));
+        curl_easy_cleanup(curl);
         return;
     }
 
-    // commit changes + message
-    char git_commit_command[150];
-    snprintf(git_commit_command, sizeof(git_commit_command), "git commit -m \"%s\"", commit_message);
-    result = system(git_commit_command);
-    if (result != 0) {
-        fprintf(stderr, "error committing changes\n");
+    if (!past24) {
+        fprintf(stderr, "failed to open past_24_hours_data.csv: %s\n", strerror(errno));
+        fclose(cumulative);
+        curl_easy_cleanup(curl);
         return;
     }
 
-    // push changes to remote
-    result = system("git push origin main");
-    if (result != 0) {
-        fprintf(stderr, "error pushing to git\n");
+    // gh token
+    const char* github_token = getenv("GITHUB_TOKEN");
+    if (!github_token) {
+        fprintf(stderr, "GITHUB_TOKEN environment variable not set\n");
+        fclose(cumulative);
+        fclose(past24);
+        curl_easy_cleanup(curl);
         return;
     }
-    printf("git update successful!\n");
-}
 
-void storeAndLogData() {
-    time_t last_github_update = 0;
-    while (1) {
-        // save current data to history
-        time_t now = time(NULL);
-        data.timestamp = now;
-        history[currentIndex] = data;
+    // gh repo from env
+    const char* github_repo = getenv("GITHUB_REPO");
+    if (!github_repo) {
+        github_repo = "bilals12/see";  // fallback default
+    }
 
-        // log data to files
-        logDataToFile();
+    struct curl_slist *headers = NULL;
+    headers = curl_slist_append(headers, "Accept: application/vnd.github.v3+json");
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+    char auth_header[256];
+    snprintf(auth_header, sizeof(auth_header), "Authorization: Bearer %s", github_token);
+    headers = curl_slist_append(headers, auth_header);
 
-        // update git every hour
-        if (now - last_github_update >= 3600) {
-            update_github();
-            last_github_update = now;
+    // set common options
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
+
+    // update files with gh api
+    const char *files[] = {"cumulative_data.csv", "past_24_hours_data.csv"};
+    FILE *sources[] = {cumulative, past24};
+
+    for (int i = 0; i < 2; i++) {
+        // file content + size
+        fseek(sources[i], 0, SEEK_END);
+        long fsize = ftell(sources[i]);
+        fseek(sources[i], 0, SEEK_SET);
+
+        char *content = malloc(fsize + 1);
+        fread(content, fsize, 1, sources[i]);
+        content[fsize] = 0;
+
+        // json payload
+        char *payload;
+        asprintf(&payload, "{\"message\":\"Update %s - %s\",\"content\":\"%s\"}", files[i], timestamp, content);
+
+        // set url
+        char url[256];
+        snprintf(url, sizeof(url), 
+                "https://api.github.com/repos/%s/contents/%s", 
+                github_repo, files[i]);
+
+        curl_easy_setopt(curl, CURLOPT_URL, url);
+        curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PUT");
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, payload);
+
+        res = curl_easy_perform(curl);
+        if (res != CURLE_OK) {
+            fprintf(stderr, "failed to update %s: %s\n", files[i], curl_easy_strerror(res));
         }
 
-        // move to next index
+        free(content);
+        free(payload);
+    }
+    
+    // cleanup
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+    fclose(cumulative);
+    fclose(past24);
+
+    printf("github update completed!\n");
+}
+
+void *timerThread(void *arg) {
+    while (1) {
+        sleep(INTERVAL);  // Wait for INTERVAL seconds
+        
+        // Store current time
+        time_t now = time(NULL);
+        history[currentIndex].timestamp = now;
+        history[currentIndex].keypresses = data.keypresses;
+        history[currentIndex].mouse_moves = data.mouse_moves;
+        history[currentIndex].left_clicks = data.left_clicks;
+        history[currentIndex].right_clicks = data.right_clicks;
+        history[currentIndex].middle_clicks = data.middle_clicks;
+
+        // Reset current interval data
+        data = (ActivityData){0};
+        data.timestamp = now;
+
+        // Update index
         currentIndex = (currentIndex + 1) % DATA_POINTS;
 
-        // reset current data
-        data.keypresses = 0;
-        data.mouse_moves = 0;
-        data.left_clicks = 0;
-        data.right_clicks = 0;
-        data.middle_clicks = 0;
+        // Log to files
+        logDataToFile();
 
-        sleep(INTERVAL);
+        // Update GitHub if needed
+        update_github();
     }
+    return NULL;
 }
 
 int main(int argc, char *argv[]) {
+    load_env();
     char cwd[1024];
     if (getcwd(cwd, sizeof(cwd)) != NULL) {
         printf("current working directory: %s\n", cwd);
@@ -226,9 +330,12 @@ int main(int argc, char *argv[]) {
 
     printf("event tap created and enabled!\n");
 
-    // start the data storage and logging loop in a separate thread
-    pthread_t logging_thread;
-    pthread_create(&logging_thread, NULL, (void *)storeAndLogData, NULL);
+    // Start timer thread
+    pthread_t timer_thread;
+    if (pthread_create(&timer_thread, NULL, timerThread, NULL) != 0) {
+        fprintf(stderr, "Failed to create timer thread\n");
+        return 1;
+    }
 
     // start the event loop
     CFRunLoopRun();  // this keeps event tap running
