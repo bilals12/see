@@ -16,7 +16,7 @@ const eventColors = {
 };
 
 // Fix cumulative data display
-fetch('cumulative_data.csv')
+fetch('/viz/cumulative_data.csv')
     .then(response => response.text())
     .then(data => {
         debugLog('Cumulative data:', data);
@@ -33,7 +33,7 @@ fetch('cumulative_data.csv')
     .catch(error => console.error('error loading cumulative data:', error));
 
 // fetch past 24h data + generate chart
-fetch('past_24_hours_data.csv')
+fetch('/viz/past_24_hours_data.csv')
     .then(response => response.text())
     .then(data => {
         const parsedData = parseCSV(data);
@@ -270,7 +270,7 @@ function renderChart(data) {
 
     // Add auto-refresh every minute
     setInterval(() => {
-        fetch('cumulative_data.csv')
+        fetch('/viz/cumulative_data.csv')
             .then(response => response.text())
             .then(data => {
                 const lines = data.split('\n');
