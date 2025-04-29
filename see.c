@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <curl/curl.h>
 #include <string.h>
+#include <errno.h>
 
 #define DATA_INTERVAL 60    // 1 minute in seconds
 #define GITHUB_INTERVAL 3600  // 1 hour in seconds
@@ -147,8 +148,22 @@ void logDataToFile() {
 }
 
 // new helper funcs
+// also updated to capture HTTP responses
 size_t write_callback(void *contents, size_t size, size_t nmemb, void *userp) {
-    return size * nmemb; // discard response
+    // if userp is NULL, discard response
+    if (!userp) {
+        return size * nmemb;
+    }
+
+    // store response in buf
+    size_t total_size = size * nmemb;
+    char *buffer = (char *)userp;
+
+    // copy response if buffer is large enough
+    strncpy(buffer, contents, total_size);
+    buffer[total_size] = '\0'; // null termination
+
+    return total_size;
 } 
 
 // updating git
@@ -224,12 +239,62 @@ void update_github() {
         fseek(sources[i], 0, SEEK_SET);
 
         char *content = malloc(fsize + 1);
+        if (!content) {
+            fprintf(stderr, "memory allocation failed for content\n");
+            continue;
+        }
+
         fread(content, fsize, 1, sources[i]);
         content[fsize] = 0;
 
+        // b64 encode using temp file
+        char tmp_filename[256];
+        snprintf(tmp_filename, sizeof(tmp_filename), "/tmp/see_tmp_%d_%d.txt", getpid(), i);
+
+        FILE *tmp = fopen(tmp_filename, "wb");
+        if (!tmp) {
+            fprintf(stderr, "failed to create temp file for base64 encoding\n");
+            free(content);
+            continue;
+        }
+
+        fwrite(content, 1, fsize, tmp);
+        fclose(tmp);
+
+        // encode
+        char cmd[1024];
+        snprintf(cmd, sizeof(cmd), "base64 %s", tmp_filename);
+        FILE *p = popen(cmd, "r");
+        if (!p) {
+            fprintf(stderr, "failed to run b64 command\n");
+            unlink(tmp_filename);
+            free(content);
+            continue;
+        }
+
+        // read b64 output
+        char base64_content[fsize * 2]; // should be plenty
+        size_t bytes_read = fread(base64_content, 1, sizeof(base64_content) - 1, p);
+        base64_content[bytes_read] = 0; // null terminate
+        pclose(p);
+
+        // remove newlines
+        for (char *ptr = base64_content; *ptr, ptr++) {
+            if (*ptr == '\n') *ptr = '\0';
+        }
+
+        // clean up temp file
+        unlink(tmp_filename);
+
         // json payload
         char *payload;
-        asprintf(&payload, "{\"message\":\"Update %s - %s\",\"content\":\"%s\"}", files[i], timestamp, content);
+        asprintf(&payload, "{\"message\":\"Update %s - %s\",\"content\":\"%s\"}", files[i], timestamp, base64_content);
+
+        if (!payload) {
+            fprintf(stderr, "failed to create json payload\n");
+            free(content);
+            continue;
+        }
 
         // set url
         char url[256];
@@ -241,9 +306,22 @@ void update_github() {
         curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PUT");
         curl_easy_setopt(curl, CURLOPT_POSTFIELDS, payload);
 
+        // set up buffer to capture response
+        char response_buffer[4096] = {0};
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, response_buffer);
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
+        
         res = curl_easy_perform(curl);
         if (res != CURLE_OK) {
             fprintf(stderr, "failed to update %s: %s\n", files[i], curl_easy_strerror(res));
+        } else {
+            long response_code;
+            curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_code);
+            if (response_code >= 200 && response_code < 300) {
+                printf("successfully updated %s (HTTP %ld)\n", files[i], response_code);
+            } else {
+                fprintf(stderr, "gh api error for %s (HTTP %ld): %s\n", files[i], response_code, response_buffer);
+            }
         }
 
         free(content);

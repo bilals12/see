@@ -15,6 +15,19 @@ if [ -f "$PID_FILE" ]; then
     fi
 fi
 
+# .env file existence
+if [ ! -f "${SEE_DIR}/.env" ]; then
+    echo "warning: .env file not found in ${SEE_DIR}"
+else
+    # check
+    if ! grep -q "GITHUB_TOKEN" "${SEE_DIR}/.env"; then
+        echo "warning: GITHUB_TOKEN not found in .env file"
+    fi
+    if ! grep -q "GITHUB_REPO" "${SEE_DIR}/.env"; then
+        echo "warning: GITHUB_REPO not found in .env file"
+    fi
+fi
+
 # start in background
 cd "$SEE_DIR"
 nohup ./see > "$LOG_FILE" 2>&1 &
