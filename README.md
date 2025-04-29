@@ -1,84 +1,59 @@
-# see - Personal Computer Activity Monitor
+# see
 
-A lightweight tool to track and visualize your computer usage patterns, including keyboard and mouse activity.
+A minimal macOS activity tracker that monitors keyboard and mouse usage.
 
-## Features
-- Tracks keypresses, mouse clicks, and mouse movement
-- Converts mouse movement to meters
-- Maintains 24-hour rolling history
-- Auto-syncs data to GitHub
-- Web visualization interface
+## Overview
+
+`see` runs silently in the background, collecting data about:
+- Keystrokes
+- Mouse movements (in meters)
+- Mouse clicks (left, right)
+
+Data is collected every minute and stored locally. An hourly snapshot is pushed to GitHub for visualization.
 
 ## Installation
 
-### Prerequisites
-- macOS (requires Accessibility permissions)
-- gcc compiler
-- curl library
-- GitHub Personal Access Token (for data sync)
-
-### Setup
 1. Clone the repository:
 ```bash
 git clone https://github.com/bilals12/see.git
 cd see
 ```
 
-2. Create environment file:
+2. Build:
 ```bash
-echo "GITHUB_TOKEN=your_token_here" > .env
-echo "GITHUB_REPO=your_username/your_repo" >> .env
+make
 ```
 
-3. Compile the program:
+3. Add these aliases to your shell config (`~/.zshrc` or `~/.bashrc`):
 ```bash
-gcc -o see see.c -framework ApplicationServices -pthread -lcurl
+alias see-start="$HOME/code/see/launch.sh"
+alias see-stop="$HOME/code/see/stop.sh"
+alias see-status="[ -f $HOME/code/see/.see.pid ] && ps -p \$(cat $HOME/code/see/.see.pid) > /dev/null && echo 'see is running' || echo 'see is not running'"
 ```
-
-4. Grant Accessibility permissions:
-- Go to System Settings > Privacy & Security > Accessibility
-- Add the compiled 'see' executable
 
 ## Usage
 
-### Running the Program
-```bash
-./see
-```
+- Start tracking: `see-start`
+- Check status: `see-status`
+- Stop tracking: `see-stop`
 
-### Running in Background
-```bash
-nohup ./see > output.log 2>&1 &
-```
+## Data
 
-### Process Management
-Check if running:
-```bash
-ps -ef | grep see
-```
+Two CSV files are maintained:
 
-Stop the program:
-```bash
-kill $(pgrep see)
-```
+1. `cumulative_data.csv`: Total activity since first run
+2. `past_24_hours_data.csv`: Minute-by-minute activity for the last 24 hours
 
-## Data Files
-- `cumulative_data.csv`: Lifetime statistics
-- `past_24_hours_data.csv`: Rolling 24-hour data in 10-minute intervals
+## Requirements
 
-## Debugging
+- macOS (tested on Sonoma 14.0+)
+- gcc
+- libcurl
 
-Using LLDB:
-```bash
-lldb ./see
-run
-```
+## Privacy
 
-## Web Interface
-Open `index.html` in a browser to view the visualization dashboard.
-
-## Contributing
-Pull requests are welcome. For major changes, please open an issue first.
+All data is stored locally. Only hourly snapshots are pushed to GitHub if configured.
 
 ## License
-[MIT](https://choosealicense.com/licenses/mit/)
+
+MIT

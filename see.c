@@ -8,10 +8,11 @@
 #include <curl/curl.h>
 #include <string.h>
 
-#define INTERVAL 600  // log data every 10 mins
+#define DATA_INTERVAL 60    // 1 minute in seconds
+#define GITHUB_INTERVAL 3600  // 1 hour in seconds
 #define HOURS_TO_SECONDS(x) ((x) * 3600)
-#define DATA_POINTS (HOURS_TO_SECONDS(24) / 600)
-#define PIXELS_TO_METERS(x) ((x) * 0.0002645833)  // conversion factor for pixels to meters (assumes 96 DPI)
+#define DATA_POINTS (HOURS_TO_SECONDS(24) / DATA_INTERVAL)  // 1440 points for 24h
+#define PIXELS_TO_METERS(x) ((x) * 0.0002645833)
 
 // struct to hold activity data for single interval
 typedef struct {
@@ -37,13 +38,6 @@ unsigned long long cumulative_middle_clicks = 0;
 double last_mouse_x = -1.0, last_mouse_y = -1.0;
 
 CGEventRef eventCallback(CGEventTapProxy proxy, CGEventType type, CGEventRef event, void *refcon) {
-    static int eventCount = 0;
-    eventCount++;
-    
-    if (eventCount % 100 == 0) {  // Log every 100 events
-        printf("Processed %d events\n", eventCount);
-    }
-
     if (type == kCGEventKeyDown) {
         data.keypresses++;
         cumulative_keypresses++;
@@ -99,7 +93,7 @@ void load_env() {
 }
 
 void logDataToFile() {
-    // Log cumulative counts
+    // log cumulative counts
     FILE *cumulativeFile = fopen("cumulative_data.csv", "w");
     if (cumulativeFile) {
         fprintf(cumulativeFile, "keypresses,mousemoves,leftclicks,rightclicks,middleclicks\n");
@@ -110,12 +104,9 @@ void logDataToFile() {
                 cumulative_right_clicks,
                 cumulative_middle_clicks);
         fclose(cumulativeFile);
-        printf("Wrote cumulative data: %llu keypresses, %.2f moves, %llu left, %llu right\n",
-               cumulative_keypresses, cumulative_mouse_moves, 
-               cumulative_left_clicks, cumulative_right_clicks);
     }
 
-    // Log past 24 hours
+    // log past 24 hours
     FILE *past24HoursFile = fopen("past_24_hours_data.csv", "w");
     if (past24HoursFile) {
         fprintf(past24HoursFile, "timestamp,keypresses,mousemoves,leftclicks,rightclicks,middleclicks\n");
@@ -145,7 +136,7 @@ void logDataToFile() {
             }
         }
 
-        // Add cumulative line for last 24h
+        // add cumulative line for last 24h
         fprintf(past24HoursFile, "cumulative,%llu,%.2f meters,%llu,%llu,%llu\n",
                 past24_keypresses, past24_mouse_moves,
                 past24_left_clicks, past24_right_clicks, past24_middle_clicks);
@@ -166,7 +157,7 @@ void update_github() {
     char timestamp[26];
     strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", localtime(&now));
 
-    printf("attempting to update github @ %s...\n", timestamp);
+    // printf("attempting to update github @ %s...\n", timestamp);
 
     CURL *curl;
     CURLcode res;
@@ -268,12 +259,16 @@ void update_github() {
     printf("github update completed!\n");
 }
 
+// timestamp tracking for gh events
 void *timerThread(void *arg) {
+    time_t last_github_update = time(NULL);
+    
     while (1) {
-        sleep(INTERVAL);  // Wait for INTERVAL seconds
+        sleep(DATA_INTERVAL);  // Wait 1 minute
         
-        // Store current time
         time_t now = time(NULL);
+        
+        // Store current minute's data
         history[currentIndex].timestamp = now;
         history[currentIndex].keypresses = data.keypresses;
         history[currentIndex].mouse_moves = data.mouse_moves;
@@ -288,39 +283,34 @@ void *timerThread(void *arg) {
         // Update index
         currentIndex = (currentIndex + 1) % DATA_POINTS;
 
-        // Log to files
+        // Always log data to files
         logDataToFile();
 
-        // Update GitHub if needed
-        update_github();
+        // Only update GitHub every hour
+        if (now - last_github_update >= GITHUB_INTERVAL) {
+            update_github();
+            last_github_update = now;
+        }
     }
     return NULL;
 }
 
 int main(int argc, char *argv[]) {
     load_env();
-    char cwd[1024];
-    if (getcwd(cwd, sizeof(cwd)) != NULL) {
-        printf("current working directory: %s\n", cwd);
-    } else {
-        perror("getcwd() error");
-    }
-    // set-up event tap
+    
+    // Set up event tap
     CGEventMask eventMask = (1 << kCGEventKeyDown) | (1 << kCGEventLeftMouseDown) |
-                            (1 << kCGEventRightMouseDown) | (1 << kCGEventMouseMoved) |
-                            (1 << kCGEventOtherMouseDown) | (1 << kCGEventKeyUp) |
-                            (1 << kCGEventLeftMouseUp) | (1 << kCGEventRightMouseUp) | 
-                            (1 << kCGEventScrollWheel);
+                           (1 << kCGEventRightMouseDown) | (1 << kCGEventMouseMoved) |
+                           (1 << kCGEventOtherMouseDown);
     
     CFMachPortRef eventTap = CGEventTapCreate(kCGAnnotatedSessionEventTap,
-                                              kCGHeadInsertEventTap,
-                                              0,
-                                              eventMask,
-                                              eventCallback,
-                                              NULL);
+                                             kCGHeadInsertEventTap,
+                                             0,
+                                             eventMask,
+                                             eventCallback,
+                                             NULL);
 
     if (!eventTap) {
-        fprintf(stderr, "Failed to create event tap!\n");
         return 1;
     }
 
@@ -328,21 +318,12 @@ int main(int argc, char *argv[]) {
     CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, kCFRunLoopCommonModes);
     CGEventTapEnable(eventTap, true);
 
-    printf("event tap created and enabled!\n");
-
-    // Start timer thread
     pthread_t timer_thread;
     if (pthread_create(&timer_thread, NULL, timerThread, NULL) != 0) {
-        fprintf(stderr, "Failed to create timer thread\n");
         return 1;
     }
 
-    // start the event loop
-    CFRunLoopRun();  // this keeps event tap running
-
-    // cleanup (never reached unless CFRunLoopRun stops)
-    CFRelease(eventTap);
-    CFRelease(runLoopSource);
+    CFRunLoopRun();
 
     return 0;
 }
