@@ -29,7 +29,6 @@ jobs:
       run: |
         set -x  # Enable verbose output
         cp see/*.csv website/static/viz || echo "No CSV files found"
-        cp see/visualization.js website/static/viz/ || echo "visualization.js not found"
         cd website
         git config user.name github-actions
         git config user.email github-actions@github.com
