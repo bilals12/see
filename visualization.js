@@ -44,13 +44,12 @@ fetch('./past_24_hours_data.csv')
 function parseCSV(data) {
     debugLog('Raw CSV data:', data);
     const lines = data.split('\n')
-        .filter(line => line.trim() && !line.startsWith('cumulative')); // skip header and cumulative line
+        .filter(line => line.trim() && !line.startsWith('cumulative'));
     
-    debugLog('Filtered lines:', lines);
-    
-    const parsedData = lines.map(line => {
+    // Parse all data points
+    let parsedData = lines.map(line => {
         const [timestamp, keypresses, mousemoves, leftclicks, rightclicks, middleclicks] = line.split(',');
-        const parsed = {
+        return {
             timestamp: new Date(parseInt(timestamp) * 1000),
             keypresses: parseInt(keypresses) || 0,
             mousemoves: parseFloat(mousemoves.replace(' meters', '')) || 0,
@@ -58,11 +57,39 @@ function parseCSV(data) {
             rightclicks: parseInt(rightclicks) || 0,
             middleclicks: parseInt(middleclicks) || 0
         };
-        debugLog('Parsed line:', parsed);
-        return parsed;
     }).filter(d => !isNaN(d.timestamp.getTime()));
 
-    debugLog('Final parsed data:', parsedData);
+    // Group data into 15-minute intervals
+    const fifteenMinutes = 15 * 60 * 1000; // 15 minutes in milliseconds
+    const groupedData = {};
+
+    parsedData.forEach(d => {
+        // Round timestamp to nearest 15-minute interval
+        const interval = new Date(Math.floor(d.timestamp.getTime() / fifteenMinutes) * fifteenMinutes);
+        
+        if (!groupedData[interval]) {
+            groupedData[interval] = {
+                timestamp: interval,
+                keypresses: 0,
+                mousemoves: 0,
+                leftclicks: 0,
+                rightclicks: 0,
+                middleclicks: 0
+            };
+        }
+        
+        // Aggregate values
+        groupedData[interval].keypresses += d.keypresses;
+        groupedData[interval].mousemoves += d.mousemoves;
+        groupedData[interval].leftclicks += d.leftclicks;
+        groupedData[interval].rightclicks += d.rightclicks;
+        groupedData[interval].middleclicks += d.middleclicks;
+    });
+
+    // Convert back to array and sort by timestamp
+    parsedData = Object.values(groupedData).sort((a, b) => a.timestamp - b.timestamp);
+    
+    debugLog('Grouped 15-minute intervals:', parsedData);
     return parsedData;
 }
 
@@ -134,7 +161,6 @@ function renderChart(data) {
 
     // draw axes
     function createAxes() {
-        // dynamic tick number
         const tickCount = Math.max(4, Math.min(12, Math.floor(width / 120)));
         const xAxis = d3.axisBottom(x)
             .tickFormat(d => {
@@ -142,17 +168,16 @@ function renderChart(data) {
                 const minutes = d.getMinutes();
                 const ampm = hours >= 12 ? 'PM' : 'AM';
                 const hour12 = hours % 12 || 12;
-                // only show minutes if not 0 or multiple of 15
+                
+                // Show time for every 15-minute interval
                 if (minutes === 0) {
                     return `${hour12}${ampm}`;
-                } else if (data.length > 20 && minutes % 30 !== 0) {
-                    // dense data: only show hour and .5 hour marks
-                    return '';
-                } else {
-                    return `${hour12}:${minutes.toString().padStart(2, '0')}`;
+                } else if (minutes === 15 || minutes === 30 || minutes === 45) {
+                    return `${hour12}:${minutes}`;
                 }
+                return '';
             })
-            .ticks(tickCount)
+            .ticks(d3.timeMinute.every(15))
             .tickSizeOuter(0);
 
         svg.append('g')
@@ -272,16 +297,13 @@ function renderChart(data) {
                 });
 
                 // format
-                const timeStr = d.timestamp.toLocaleTimeString([], {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    second: '2-digit'
-                });
-
                 tooltip.style('opacity', 0.9)
                     .html(`
                         <div style="font-weight:bold;margin-bottom:5px;border-bottom:1px solid #0f0;">
-                        ${timeStr}
+                        ${d.timestamp.toLocaleTimeString([], {
+                            hour: '2-digit',
+                            minute: '2-digit'
+                        })}
                         </div>
                         <div>keypresses: ${d.keypresses}</div>
                         <div>mouse moves: ${d.mousemoves.toFixed(2)}m</div>
@@ -289,7 +311,7 @@ function renderChart(data) {
                         <div>right clicks: ${d.rightclicks}</div>
                     `)
                     .style('left', `${event.pageX + 15}px`)
-                    .style('top', `${event.pageY - 10}px`);;
+                    .style('top', `${event.pageY - 10}px`);
                 } else {
                     tooltip
                         .style('left', `${event.pageX + 15}px`)
