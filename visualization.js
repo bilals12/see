@@ -8,14 +8,14 @@ function debugLog(message, data) {
 
 // define colors for each event
 const eventColors = {
-    leftclicks: '#90EE90',    // Light green
-    rightclicks: '#98FB98',   // Pale green
-    middleclicks: '#98FF98',  // Mint green
-    keypresses: '#7FFF00',    // Chartreuse
-    mousemoves: '#00FF7F'     // Spring green
+    leftclicks: '#90EE90',    // light green
+    rightclicks: '#98FB98',   // pale green
+    middleclicks: '#98FF98',  // mint green
+    keypresses: '#7FFF00',    // chartreuse
+    mousemoves: '#00FF7F'     // spring green
 };
 
-// Fix cumulative data display
+// cumulative data display
 fetch('./cumulative_data.csv')
     .then(response => response.text())
     .then(data => {
@@ -44,7 +44,7 @@ fetch('./past_24_hours_data.csv')
 function parseCSV(data) {
     debugLog('Raw CSV data:', data);
     const lines = data.split('\n')
-        .filter(line => line.trim() && !line.startsWith('cumulative')); // Skip header and cumulative line
+        .filter(line => line.trim() && !line.startsWith('cumulative')); // skip header and cumulative line
     
     debugLog('Filtered lines:', lines);
     
@@ -73,11 +73,11 @@ function renderChart(data) {
     }
     debugLog('Rendering chart with data points:', data.length);
     
-    // Clear existing chart and tooltips
+    // clear existing chart and tooltips
     d3.select('#chart').html('');
     d3.selectAll('.tooltip').remove();
 
-    // Setup dimensions
+    // setup dimensions
     const chartContainer = d3.select('#chart');
     const containerWidth = parseInt(chartContainer.style('width'));
     const containerHeight = parseInt(chartContainer.style('height'));
@@ -85,7 +85,7 @@ function renderChart(data) {
     const width = (containerWidth || 800) - margin.left - margin.right;
     const height = (containerHeight || 400) - margin.top - margin.bottom;
 
-    // Create SVG
+    // create SVG
     const svg = chartContainer
         .append('svg')
         .style('width', '100%')
@@ -94,7 +94,7 @@ function renderChart(data) {
         .append('g')
         .attr('transform', `translate(${margin.left},${margin.top})`);
 
-    // Setup scales
+    // setup scales
     const x = d3.scaleTime()
         .domain(d3.extent(data, d => d.timestamp))
         .range([0, width]);
@@ -105,13 +105,13 @@ function renderChart(data) {
         ) * 1.1])
         .range([height, 0]);
 
-    // Create tooltip once
+    // create tooltip once
     const tooltip = d3.select('body')
         .append('div')
         .attr('class', 'tooltip')
         .style('opacity', 0);
 
-    // Draw grid
+    // draw grid
     function createGrid() {
         svg.append('g')
             .attr('class', 'grid')
@@ -132,17 +132,27 @@ function renderChart(data) {
             .style('stroke-opacity', 0.1);
     }
 
-    // Draw axes
+    // draw axes
     function createAxes() {
+        // dynamic tick number
+        const tickCount = Math.max(4, Math.min(12, Math.floor(width / 120)));
         const xAxis = d3.axisBottom(x)
             .tickFormat(d => {
                 const hours = d.getHours();
                 const minutes = d.getMinutes();
                 const ampm = hours >= 12 ? 'PM' : 'AM';
                 const hour12 = hours % 12 || 12;
-                return `${hour12}:${minutes.toString().padStart(2, '0')} ${ampm}`;
+                // only show minutes if not 0 or multiple of 15
+                if (minutes === 0) {
+                    return `${hour12}${ampm}`;
+                } else if (data.length > 20 && minutes % 30 !== 0) {
+                    // dense data: only show hour and .5 hour marks
+                    return '';
+                } else {
+                    return `${hour12}:${minutes.toString().padStart(2, '0')}`;
+                }
             })
-            .ticks(d3.timeMinute.every(15))
+            .ticks(tickCount)
             .tickSizeOuter(0);
 
         svg.append('g')
@@ -153,18 +163,19 @@ function renderChart(data) {
             .style('font-size', '12px');
 
         svg.append('g')
-            .call(d3.axisLeft(y))
+            .attr('class', 'y-axis')
+            .call(d3.axisLeft(y).ticks(5))
             .style('color', '#0f0');
     }
 
-    // Draw data lines and points
+    // draw data lines and points
     function drawDataLines() {
         const filteredEventColors = Object.fromEntries(
             Object.entries(eventColors).filter(([key]) => key !== 'middleclicks')
         );
 
         Object.entries(filteredEventColors).forEach(([metric, color]) => {
-            // Draw line
+            // draw line
             const line = d3.line()
                 .x(d => x(d.timestamp))
                 .y(d => y(d[metric]))
@@ -177,20 +188,22 @@ function renderChart(data) {
                 .attr('stroke-width', 2)
                 .attr('d', line);
 
-            // Draw points
-            svg.selectAll(`dot-${metric}`)
-                .data(data)
-                .enter()
-                .append('circle')
-                .attr('cx', d => x(d.timestamp))
-                .attr('cy', d => y(d[metric]))
-                .attr('r', 3)
-                .attr('fill', color)
-                .attr('opacity', 0.7);
+            // draw points
+            if (data.length < 100) {
+                svg.selectAll(`dot-${metric}`)
+                    .data(data)
+                    .enter()
+                    .append('circle')
+                    .attr('cx', d => x(d.timestamp))
+                    .attr('cy', d => y(d[metric]))
+                    .attr('r', 3)
+                    .attr('fill', color)
+                    .attr('opacity', 0.7);
+            }
         });
     }
 
-    // Create mouse tracking overlay
+    // create mouse tracking overlay
     function createMouseTracking() {
         const overlay = svg.append('rect')
             .attr('class', 'overlay')
@@ -212,6 +225,8 @@ function renderChart(data) {
             const xDate = x.invert(mouseX);
             const bisect = d3.bisector(d => d.timestamp).left;
             const i = bisect(data, xDate, 1);
+            // edge case
+            if (i <= 0 || i >= data.length) return;
             const d0 = data[i - 1];
             const d1 = data[i];
             const d = xDate - d0.timestamp > d1.timestamp - xDate ? d1 : d0;
@@ -239,13 +254,13 @@ function renderChart(data) {
         });
     }
 
-    // Initialize chart components
+    // initialize chart components
     createGrid();
     createAxes();
     drawDataLines();
     createMouseTracking();
 
-    // Auto-refresh stats
+    // auto-refresh stats
     setInterval(() => {
         fetch('./cumulative_data.csv')
             .then(response => response.text())
