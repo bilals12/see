@@ -205,6 +205,10 @@ function renderChart(data) {
 
     // create mouse tracking overlay
     function createMouseTracking() {
+        // voronoi overlay
+        const delaunay = d3.Delaunay.from(data, d => x(d.timestamp), d => y(d.keypresses));
+        const voronoi = delaunay.voronoi([0, 0, width, height]);
+
         const overlay = svg.append('rect')
             .attr('class', 'overlay')
             .attr('width', width)
@@ -219,9 +223,27 @@ function renderChart(data) {
             .style('stroke', '#0f0')
             .style('stroke-width', '1px')
             .style('opacity', 0);
+        
+        // to stop the tooltip jittering
+        // create highlight cirles
+        const highlightPoints = {};
+        Object.keys(eventColors).forEach(metric => {
+            if (metric !== 'middleclicks') {
+                highlightPoints[metric] = svg.append('circle')
+                    .attr('r', 5)
+                    .attr('fill', eventColors[metric])
+                    .attr('stroke', '#000')
+                    .attr('stroke-width', 1.5)
+                    .style('opacity', 0);
+            }
+        });
 
+        let lastI = -1; // track last highlighted point index
+        
         overlay.on('mousemove', function(event) {
-            const [mouseX] = d3.pointer(event);
+            const [mouseX, mouseY] = d3.pointer(event);
+
+            // find closest data point using bisector
             const xDate = x.invert(mouseX);
             const bisect = d3.bisector(d => d.timestamp).left;
             const i = bisect(data, xDate, 1);
@@ -230,27 +252,64 @@ function renderChart(data) {
             const d0 = data[i - 1];
             const d1 = data[i];
             const d = xDate - d0.timestamp > d1.timestamp - xDate ? d1 : d0;
+            const idx = d === d0 ? i - 1 : i;
 
-            verticalLine
-                .attr('x1', x(d.timestamp))
-                .attr('x2', x(d.timestamp))
-                .style('opacity', 0.5);
+            // only update content if data point changed
+            if (idx !== lastI) {
+                lastI = idx;
+            
+                verticalLine
+                    .attr('x1', x(d.timestamp))
+                    .attr('x2', x(d.timestamp))
+                    .style('opacity', 0.5);
 
-            tooltip.style('opacity', 0.9)
-                .html(`
-                    <div>time: ${d.timestamp.toLocaleTimeString()}</div>
-                    <div>keypresses: ${d.keypresses}</div>
-                    <div>mouse moves: ${d.mousemoves.toFixed(2)}m</div>
-                    <div>left clicks: ${d.leftclicks}</div>
-                    <div>right clicks: ${d.rightclicks}</div>
-                `)
-                .style('left', `${event.pageX + 15}px`)
-                .style('top', `${event.pageY - 10}px`);
-        });
+                // update highlight circles
+                Object.keys(highlightPoints).forEach(metric => {
+                    highlightPoints[metric]
+                        .attr('cx', x(d.timestamp))
+                        .attr('cy', y(d[metric]))
+                        .style('opacity', 1);
+                });
+
+                // format
+                const timeStr = d.timestamp.toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit'
+                });
+
+                tooltip.style('opacity', 0.9)
+                    .html(`
+                        <div style="font-weight:bold;margin-bottom:5px;border-bottom:1px solid #0f0;">
+                        ${timeStr}
+                        </div>
+                        <div>keypresses: ${d.keypresses}</div>
+                        <div>mouse moves: ${d.mousemoves.toFixed(2)}m</div>
+                        <div>left clicks: ${d.leftclicks}</div>
+                        <div>right clicks: ${d.rightclicks}</div>
+                    `)
+                    .style('left', `${event.pageX + 15}px`)
+                    .style('top', `${event.pageY - 10}px`);;
+                } else {
+                    tooltip
+                        .style('left', `${event.pageX + 15}px`)
+                        .style('top', `${event.pageY - 10}px`);
+                }
+            });
 
         overlay.on('mouseout', () => {
-            tooltip.style('opacity', 0);
-            verticalLine.style('opacity', 0);
+            // small delay to prevent jitter
+            if (debounceTimeout) clearTimeout(debounceTimeout);
+            debounceTimeout = setTimeout(() => {
+                tooltip.style('opacity', 0);
+                verticalLine.style('opacity', 0);
+
+                // hide all highlight points
+                Object.values(highlightPoints).forEach(point => {
+                    point.style('opacity', 0);
+                });
+                lastI = -1;
+            }, 100);
         });
     }
 
