@@ -10,7 +10,7 @@
 #include <errno.h>
 
 #define DATA_INTERVAL 60    // 1 minute in seconds
-#define GITHUB_INTERVAL 10  // 1 hour in seconds
+#define GITHUB_INTERVAL 86000  // 1 hour in seconds
 #define HOURS_TO_SECONDS(x) ((x) * 3600)
 #define DATA_POINTS (HOURS_TO_SECONDS(24) / DATA_INTERVAL)  // 1440 points for 24h
 #define PIXELS_TO_METERS(x) ((x) * 0.0002645833)
