@@ -154,7 +154,7 @@ function renderChart(data) {
     const MAX_GAP_MINUTES = 15;
     let dataWithGaps = [];
 
-    // insert nulls to break
+    // find gaps + insert 0 (not null) to make lines go to 0
     for (let i = 0; i < data.length; i++) {
         dataWithGaps.push(data[i]);
 
@@ -164,22 +164,23 @@ function renderChart(data) {
             const diffMinutes = (nextTime - currentTime) / (1000 * 60);
 
             if (diffMinutes > MAX_GAP_MINUTES) {
+                // insert 0 point right after current time 
                 dataWithGaps.push({
                     timestamp: new Date(currentTime + 60000),
-                    keypresses: null, 
-                    mousemoves: null,
-                    leftclicks: null,
-                    rightclicks: null,
-                    middleclicks: null
+                    keypresses: 0, 
+                    mousemoves: 0,
+                    leftclicks: 0,
+                    rightclicks: 0,
+                    middleclicks: 0
                 });
                 // insert null at next time - 1
                 dataWithGaps.push({
                     timestamp: new Date(nextTime - 60000),
-                    keypresses: null,
-                    mousemoves: null,
-                    leftclicks: null,
-                    rightclicks: null,
-                    middleclicks: null
+                    keypresses: 0,
+                    mousemoves: 0,
+                    leftclicks: 0,
+                    rightclicks: 0,
+                    middleclicks: 0
                 });
             }
         }
