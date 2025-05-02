@@ -11,7 +11,7 @@ update_github() {
         source "${SEE_DIR}/.env"
 
         for file in "cumulative_data.csv" "past_24_hours_data.csv"; do
-            if [ - f "$file" ]; then
+            if [ -f "$file" ]; then
                 content=$(base64 "$file")
                 timestamp=$(date -u +"%Y-%m-%d %H:%M:%S")
 
