@@ -51,10 +51,6 @@ function loadData() {
             const parsedData = parseCSV(data);
             currentData = parsedData;
             renderChart(parsedData);
-
-            if (parsedData.length > 0) {
-                updateCurrentActivityTooltip(parsedData);
-            }
         })
         .catch(error => console.error('error loading past 24 hours data:', error));
 }
@@ -94,7 +90,7 @@ function parseCSV(data) {
     return parsedData;
 }
 
-function updateCurrentActivityTooltip() {
+function updateCurrentActivityTooltip(data) {
     if (!data || data.length === 0) return;
     const latestData = data[data.length - 1];
 
