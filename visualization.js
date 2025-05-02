@@ -238,16 +238,16 @@ function renderChart(data) {
 
         // if latest data point is before current time
         // add 0 point
-        if (latestTime < now) {
-            dataWithGaps.push({
-                timestamp: now,
-                keypresses: 0,
-                mousemoves: 0,
-                leftclicks: 0,
-                rightclicks: 0,
-                middleclicks: 0
-            });
-        }
+        //if (latestTime < now) {
+        //    dataWithGaps.push({
+        //        timestamp: now,
+        //        keypresses: 0,
+        //        mousemoves: 0,
+        //        leftclicks: 0,
+        //        rightclicks: 0,
+        //        middleclicks: 0
+        //    });
+        //}
     }
 
     // set x scale with fixed boundaries
