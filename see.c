@@ -8,7 +8,7 @@
 #include <curl/curl.h>
 #include <string.h>
 
-#define DATA_INTERVAL 900    // 15 minutes in seconds
+#define DATA_INTERVAL 300    // 5 minutes in seconds
 #define HOURS_TO_SECONDS(x) ((x) * 3600)
 #define DATA_POINTS (HOURS_TO_SECONDS(24) / DATA_INTERVAL)  // 1440 points for 24h
 #define PIXELS_TO_METERS(x) ((x) * 0.0002645833)
@@ -67,6 +67,75 @@ CGEventRef eventCallback(CGEventTapProxy proxy, CGEventType type, CGEventRef eve
     }
 
     return event;
+}
+
+// load cumulative data from file
+void loadCumulativeData() {
+	FILE *file = fopen("cumulative_data.csv", "r");
+	if (!file) {
+		printf("no previous cumulative data found, starting fresh\n");
+		return;
+	}
+
+	char line[256];
+	// skip header
+	if (fgets(line, sizeof(line), file) != NULL) {
+		// read data line
+		if (fgets(line, sizeof(line), file) != NULL) {
+			sscanf(line, "%llu,%lf,%llu,%llu,%llu",
+					&cumulative_keypresses,
+					&cumulative_mouse_moves,
+					&cumulative_left_clicks,
+					&cumulative_right_clicks,
+					&cumulative_middle_clicks);
+			printf("loaded previous cumulative data: %llu keypresses, %.2f mouse moves\n", cumulative_keypresses, cumulative_mouse_moves);
+		}
+	}
+	fclose(file);
+}
+
+// load past 24h data from file
+void loadPast24HoursData() {
+	FILE *file = fopen("past_24_hours_data.csv", "r");
+	if (!file) {
+		printf("no previous 24h data found, starting fresh\n");
+		return;
+	}
+
+	char line[256];
+	int entryCount = 0;
+
+	// skip header
+	if (fgets(line, sizeof(line), file) != NULL) {
+		time_t now = time(NULL);
+		time_t cutoff = now - (24 * 3600);
+		while (fgets(line, sizeof(line), file) != NULL && entryCount < DATA_POINTS) {
+			if (strncmp(line, "cumulative,", 11) == 0) {
+				continue;
+			}
+			time_t timestamp;
+			int keypresses, left_clicks, right_clicks, middle_clicks;
+			double mouse_moves;
+
+			if (sscanf(line, "%ld,%d,%lf,%d,%d,%d",
+						&timestamp, &keypresses, &mouse_moves, &left_clicks, &right_clicks, &middle_clicks) == 6) {
+				if (timestamp >= cutoff) {
+					history[entryCount].timestamp = timestamp;
+					history[entryCount].keypresses = keypresses;
+					history[entryCount].mouse_moves = mouse_moves;
+					history[entryCount].left_clicks = left_clicks;
+					history[entryCount].right_clicks = right_clicks;
+					history[entryCount].middle_clicks = middle_clicks;
+					entryCount++;
+				}
+			}
+		}
+		if (entryCount > 0) {
+			currentIndex = entryCount % DATA_POINTS;
+			printf("loaded %d previous data points from the last 24h\n", entryCount);
+		}
+	}
+	fclose(file);
 }
 
 void logDataToFile() {
@@ -177,6 +246,9 @@ int main(int argc, char *argv[]) {
 
     printf("starting see...\n");
     fflush(stdout); // explicit flush
+
+    loadCumulativeData();
+    loadPast24HoursData();
     
     // set up event tap
     CGEventMask eventMask = (1 << kCGEventKeyDown) | (1 << kCGEventLeftMouseDown) |
