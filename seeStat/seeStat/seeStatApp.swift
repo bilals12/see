@@ -99,31 +99,38 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     func checkSeeStatus() -> Bool {
         let pidFile = seeDir + "/.see.pid"
+
+        // check if PID file exists
+        guard FileManager.default.fileExists(atPath: pidFile) else {
+            print("PID file not found. check if it's actually running")
+            return false
+        }
         
         do {
+            // read PID content
             let pidContent = try String(contentsOfFile: pidFile, encoding: .utf8)
             let pid = pidContent.trimmingCharacters(in: .whitespacesAndNewlines)
-            
-            // check if running
+
+            // check if this PID is running
             let task = Process()
             task.launchPath = "/bin/ps"
             task.arguments = ["-p", pid]
-            
-            let pipe = Pipe()
-            task.standardOutput = pipe
-            task.standardError = pipe
-            
+
             task.launch()
             task.waitUntilExit()
-            
-            return task.terminationStatus == 0
+
+            // if ps returns 0, process exists
+            let isRunning = task.terminationStatus == 0
+            print("process with PID \(pid) is \(isRunning ? "running" : "not running")")
+            return isRunning
         } catch {
+            print("error checking PID: \(error)")
             return false
         }
     }
     
     @objc func toggleSee(_ sender: NSMenuItem) {
-        if checkSeeStatus() {  // "if" was missing a space
+        if checkSeeStatus() {
             stopSee()
         } else {
             startSee()
