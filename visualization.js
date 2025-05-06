@@ -342,19 +342,6 @@ function renderChart(data) {
                 .attr('stroke', color)
                 .attr('stroke-width', 2)
                 .attr('d', line);
-
-            // draw points
-            if (data.length < 50) {
-                svg.selectAll(`dot-${metric}`)
-                    .data(data)
-                    .enter()
-                    .append('circle')
-                    .attr('cx', d => x(d.timestamp))
-                    .attr('cy', d => y(d[metric] || 0))
-                    .attr('r', 3)
-                    .attr('fill', color)
-                    .attr('opacity', 0.7);
-            }
         });
     }
 
