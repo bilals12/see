@@ -4,15 +4,16 @@ SEE_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PID_FILE="${SEE_DIR}/.see.pid"
 LOG_FILE="${SEE_DIR}/see.log"
 
-# check if running
+RUNNING_PID=$(pgrep -x see || echo "")
+
+if [ -n "$RUNNING_PID" ]; then
+    echo "see is already running (PID: $RUNNING_PID)"
+    echo $RUNNING_PID > "$PID_FILE"
+    exit 0
+fi
+
 if [ -f "$PID_FILE" ]; then
-    PID=$(cat "$PID_FILE")
-    if ps -p "$PID" > /dev/null 2>&1; then
-        echo "see is already running (PID: $PID)"
-        exit 0
-    else
-        rm "$PID_FILE"
-    fi
+    rm "$PID_FILE"
 fi
 
 # .env file existence
@@ -37,6 +38,3 @@ PID=$!
 echo $PID > "$PID_FILE"
 echo "see started with PID: $PID"
 echo "logs available at: $LOG_FILE"
-
-# cron job (runs every 6 hours)
-(crontab -l 2>/dev/null | grep -v "${SEE_DIR}/github_sync.sh";  echo "0 */6 * * * cd ${SEE_DIR} && $SEE_DIR/github_sync.sh") | crontab -

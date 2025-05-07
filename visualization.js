@@ -1,5 +1,5 @@
 const DEBUG = false;  // set to false to disable debug logging
-const ROLLING_WINDOW_HOURS = 6; // 6 hr rolling window
+const ROLLING_WINDOW_HOURS = 24; // 24 hr rolling window
 const SMOOTH_CURVES = true; // curve smoothing
 
 function debugLog(message, data) {
