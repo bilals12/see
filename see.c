@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <curl/curl.h>
 #include <string.h>
+#include <stdbool.h>
 
 #define DATA_INTERVAL 300    // 5 minutes in seconds
 #define HOURS_TO_SECONDS(x) ((x) * 3600)
@@ -38,6 +39,22 @@ unsigned long long cumulative_right_clicks = 0;
 unsigned long long cumulative_middle_clicks = 0;
 
 double last_mouse_x = -1.0, last_mouse_y = -1.0;
+unsigned int consecutive_zero_intervals = 0;
+
+void logPermissionStatus() {
+    bool accessibility_trusted = AXIsProcessTrusted();
+    printf("accessibility permission: %s\n", accessibility_trusted ? "granted" : "missing");
+    if (!accessibility_trusted) {
+        printf("grant in System Settings > Privacy & Security > Accessibility\n");
+    }
+
+    bool input_monitoring_trusted = CGPreflightListenEventAccess();
+    printf("input monitoring permission: %s\n", input_monitoring_trusted ? "granted" : "missing");
+    if (!input_monitoring_trusted) {
+        printf("grant in System Settings > Privacy & Security > Input Monitoring\n");
+        printf("you may need to restart `see` after granting permissions\n");
+    }
+}
 
 CGEventRef eventCallback(CGEventTapProxy proxy, CGEventType type, CGEventRef event, void *refcon) {
     if (type == kCGEventKeyDown) {
@@ -217,14 +234,40 @@ void *timerThread(void *arg) {
         sleep(DATA_INTERVAL);  // wait 1 minute
         
         time_t now = time(NULL);
+        int interval_keypresses = data.keypresses;
+        double interval_mouse_moves = data.mouse_moves;
+        int interval_left_clicks = data.left_clicks;
+        int interval_right_clicks = data.right_clicks;
+        int interval_middle_clicks = data.middle_clicks;
+
+        printf("interval activity - keys: %d, mouse: %.4f m, clicks(L/R/M): %d/%d/%d\n",
+               interval_keypresses,
+               interval_mouse_moves,
+               interval_left_clicks,
+               interval_right_clicks,
+               interval_middle_clicks);
         
         // store current minute's data
         history[currentIndex].timestamp = now;
-        history[currentIndex].keypresses = data.keypresses;
-        history[currentIndex].mouse_moves = data.mouse_moves;
-        history[currentIndex].left_clicks = data.left_clicks;
-        history[currentIndex].right_clicks = data.right_clicks;
-        history[currentIndex].middle_clicks = data.middle_clicks;
+        history[currentIndex].keypresses = interval_keypresses;
+        history[currentIndex].mouse_moves = interval_mouse_moves;
+        history[currentIndex].left_clicks = interval_left_clicks;
+        history[currentIndex].right_clicks = interval_right_clicks;
+        history[currentIndex].middle_clicks = interval_middle_clicks;
+
+        if (interval_keypresses == 0 &&
+            interval_mouse_moves == 0.0 &&
+            interval_left_clicks == 0 &&
+            interval_right_clicks == 0 &&
+            interval_middle_clicks == 0) {
+            consecutive_zero_intervals++;
+            if (consecutive_zero_intervals % 12 == 0) {
+                printf("warning: no activity events captured for %u minutes; check Accessibility and Input Monitoring permissions\n",
+                       consecutive_zero_intervals * (DATA_INTERVAL / 60));
+            }
+        } else {
+            consecutive_zero_intervals = 0;
+        }
 
         // reset current interval data
         data = (ActivityData){0};
@@ -246,6 +289,7 @@ int main(int argc, char *argv[]) {
 
     printf("starting see...\n");
     fflush(stdout); // explicit flush
+    logPermissionStatus();
 
     loadCumulativeData();
     loadPast24HoursData();
@@ -255,14 +299,16 @@ int main(int argc, char *argv[]) {
                            (1 << kCGEventRightMouseDown) | (1 << kCGEventMouseMoved) |
                            (1 << kCGEventOtherMouseDown);
     
-    CFMachPortRef eventTap = CGEventTapCreate(kCGAnnotatedSessionEventTap,
+    CFMachPortRef eventTap = CGEventTapCreate(kCGSessionEventTap,
                                              kCGHeadInsertEventTap,
-                                             0,
+                                             kCGEventTapOptionListenOnly,
                                              eventMask,
                                              eventCallback,
                                              NULL);
 
     if (!eventTap) {
+        fprintf(stderr, "error: failed to create event tap\n");
+        fprintf(stderr, "ensure Terminal (or your launcher) has Accessibility and Input Monitoring permissions\n");
         return 1;
     }
 

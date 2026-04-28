@@ -34,6 +34,14 @@ cd "$SEE_DIR"
 nohup ./see > "$LOG_FILE" 2>&1 &
 PID=$!
 
+# verify process is still alive after startup
+sleep 2
+if ! ps -p "$PID" > /dev/null 2>&1; then
+    echo "error: see exited immediately after launch"
+    echo "check logs at: $LOG_FILE"
+    exit 1
+fi
+
 # save PID and confirm
 echo $PID > "$PID_FILE"
 echo "see started with PID: $PID"
