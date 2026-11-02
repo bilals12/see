@@ -1,5 +1,4 @@
-see.log
-.env
 see
-.see.pid
-see_agent.log
+see.log
+sync.log
+*.tmp

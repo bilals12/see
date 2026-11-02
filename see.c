@@ -5,13 +5,12 @@
 #include <unistd.h>
 #include <math.h>
 #include <stdlib.h>
-#include <curl/curl.h>
 #include <string.h>
 #include <stdbool.h>
 
 #define DATA_INTERVAL 300    // 5 minutes in seconds
 #define HOURS_TO_SECONDS(x) ((x) * 3600)
-#define DATA_POINTS (HOURS_TO_SECONDS(24) / DATA_INTERVAL)  // 1440 points for 24h
+#define DATA_POINTS (HOURS_TO_SECONDS(24) / DATA_INTERVAL)  // 288 points for 24h
 #define PIXELS_TO_METERS(x) ((x) * 0.0002645833)
 
 // files
@@ -48,7 +47,8 @@ void logPermissionStatus() {
         printf("grant in System Settings > Privacy & Security > Accessibility\n");
     }
 
-    bool input_monitoring_trusted = CGPreflightListenEventAccess();
+    // adds `see` to the Input Monitoring list and prompts once per new binary
+    bool input_monitoring_trusted = CGRequestListenEventAccess();
     printf("input monitoring permission: %s\n", input_monitoring_trusted ? "granted" : "missing");
     if (!input_monitoring_trusted) {
         printf("grant in System Settings > Privacy & Security > Input Monitoring\n");
@@ -155,9 +155,10 @@ void loadPast24HoursData() {
 	fclose(file);
 }
 
+// write to a temp file, then rename: a crash or a concurrent `git commit` never sees a half-written CSV
 void logDataToFile() {
     // log cumulative counts
-    FILE *cumulativeFile = fopen("cumulative_data.csv", "w");
+    FILE *cumulativeFile = fopen("cumulative_data.csv.tmp", "w");
     if (cumulativeFile) {
         fprintf(cumulativeFile, "keypresses,mousemoves,leftclicks,rightclicks,middleclicks\n");
         fprintf(cumulativeFile, "%llu,%.2f,%llu,%llu,%llu\n",
@@ -167,10 +168,11 @@ void logDataToFile() {
                 cumulative_right_clicks,
                 cumulative_middle_clicks);
         fclose(cumulativeFile);
+        rename("cumulative_data.csv.tmp", "cumulative_data.csv");
     }
 
     // log past 24 hours
-    FILE *past24HoursFile = fopen("past_24_hours_data.csv", "w");
+    FILE *past24HoursFile = fopen("past_24_hours_data.csv.tmp", "w");
     if (past24HoursFile) {
         fprintf(past24HoursFile, "timestamp,keypresses,mousemoves,leftclicks,rightclicks,middleclicks\n");
         
@@ -205,33 +207,14 @@ void logDataToFile() {
                 past24_left_clicks, past24_right_clicks, past24_middle_clicks);
         
         fclose(past24HoursFile);
+        rename("past_24_hours_data.csv.tmp", "past_24_hours_data.csv");
         printf("Updated past 24 hours data with %d entries\n", currentIndex);
     }
 }
 
-// new helper funcs
-// also updated to capture HTTP responses
-size_t write_callback(void *contents, size_t size, size_t nmemb, void *userp) {
-    // if userp is NULL, discard response
-    if (!userp) {
-        return size * nmemb;
-    }
-
-    // store response in buf
-    size_t total_size = size * nmemb;
-    char *buffer = (char *)userp;
-
-    // copy response if buffer is large enough
-    strncpy(buffer, contents, total_size);
-    buffer[total_size] = '\0'; // null termination
-
-    return total_size;
-}
-
-// timestamp tracking for gh events
 void *timerThread(void *arg) {
     while (1) {
-        sleep(DATA_INTERVAL);  // wait 1 minute
+        sleep(DATA_INTERVAL);
         
         time_t now = time(NULL);
         int interval_keypresses = data.keypresses;

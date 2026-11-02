@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-Wall -framework ApplicationServices -lcurl -pthread
+CFLAGS=-Wall -framework ApplicationServices -pthread
 TARGET=see
 SOURCES=see.c
 

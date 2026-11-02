@@ -1,58 +1,39 @@
 # see
 
-A minimal macOS activity tracker that monitors keyboard and mouse usage.
+A minimal macOS activity tracker for keyboard and mouse use. The chart is on [my website](https://github.com/bilals12/website/tree/main/static/viz).
 
-## Overview
+## How it works
 
-`see` runs silently in the background, collecting data about:
-- Keystrokes
-- Mouse movements (in meters)
-- Mouse clicks (left, right)
+- `see` counts keypresses, mouse movement (in meters), and left, right, and middle clicks.
+- Every 5 minutes, `see` writes `past_24_hours_data.csv` (5-minute intervals for the last 24 hours) and `cumulative_data.csv` (totals since the first run).
+- Every 15 minutes, a LaunchAgent commits the two CSV files and pushes them.
+- The website reads the CSV files from `raw.githubusercontent.com` when the page loads. A new data commit does not start a site build.
 
-Data is collected every minute and stored locally. An hourly snapshot is pushed to GitHub for visualization.
+## Install
 
-## Installation
-
-1. Clone the repository:
-```bash
-git clone https://github.com/bilals12/see.git
-cd see
-```
-
-2. Build:
 ```bash
 make
+./install_agent.sh
 ```
 
-3. Add these aliases to your shell config (`~/.zshrc` or `~/.bashrc`):
+`install_agent.sh` installs two LaunchAgents. `com.user.see` keeps `see` running and starts it again after a reboot. `com.user.see.sync` pushes the data.
+
+macOS asks for the Input Monitoring permission for the `see` binary. Each `make` makes a new binary, so grant the permission again after a rebuild. Then restart `see`:
+
 ```bash
-alias see-start="$HOME/code/see/launch.sh"
-alias see-stop="$HOME/code/see/stop.sh"
-alias see-status="[ -f $HOME/code/see/.see.pid ] && ps -p \$(cat $HOME/code/see/.see.pid) > /dev/null && echo 'see is running' || echo 'see is not running'"
+launchctl kickstart -k gui/$(id -u)/com.user.see
 ```
 
-## Usage
+## Logs
 
-- Start tracking: `see-start`
-- Check status: `see-status`
-- Stop tracking: `see-stop`
-
-## Data
-
-Two CSV files are maintained:
-
-1. `cumulative_data.csv`: Total activity since first run
-2. `past_24_hours_data.csv`: Minute-by-minute activity for the last 24 hours
+- `see.log`: the output of `see`. It shows a warning when `see` gets no events for an hour.
+- `sync.log`: errors from `git commit` and `git push`.
 
 ## Requirements
 
-- macOS (tested on Sonoma 14.0+)
-- gcc
-- libcurl
-
-## Privacy
-
-All data is stored locally. Only hourly snapshots are pushed to GitHub if configured.
+- macOS
+- `gcc` (Xcode Command Line Tools)
+- An SSH key for GitHub that works with no prompt (in the SSH agent or the macOS keychain)
 
 ## License
 

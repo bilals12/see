@@ -1,79 +1,75 @@
 #!/bin/bash
+# installs two LaunchAgents: `see` (restarted by launchd, also after a reboot)
+# and a job that commits + pushes the CSVs every 15 minutes
+set -euo pipefail
 
-# create LaunchAgent file
-AGENT_DIR="$HOME/Library/LaunchAgents"
-AGENT_FILE="$AGENT_DIR/com.user.see.plist"
-SYNC_AGENT_FILE="$AGENT_DIR/com.user.see.sync.plist"
 SEE_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-
+AGENT_DIR="$HOME/Library/LaunchAgents"
+DOMAIN="gui/$(id -u)"
 mkdir -p "$AGENT_DIR"
 
-cat > "$AGENT_FILE" << EOF
+cat > "$AGENT_DIR/com.user.see.plist" << EOF
 <?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple/DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
 	<key>Label</key>
 	<string>com.user.see</string>
 	<key>ProgramArguments</key>
 	<array>
-		<string>${SEE_DIR}/launch.sh</string>
+		<string>${SEE_DIR}/see</string>
 	</array>
+	<key>WorkingDirectory</key>
+	<string>${SEE_DIR}</string>
 	<key>RunAtLoad</key>
 	<true/>
 	<key>KeepAlive</key>
 	<true/>
-	<key>StandardErrorPath</key>
-	<string>${SEE_DIR}/see_agent.log</string>
 	<key>StandardOutPath</key>
-	<string>${SEE_DIR}/see_agent.log</string>
+	<string>${SEE_DIR}/see.log</string>
+	<key>StandardErrorPath</key>
+	<string>${SEE_DIR}/see.log</string>
 </dict>
 </plist>
 EOF
 
-cat > "$SYNC_AGENT_FILE" << EOF
+# unsigned commits: launchd cannot answer an SSH signing passphrase prompt
+cat > "$AGENT_DIR/com.user.see.sync.plist" << EOF
 <?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple/DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>Label</key>
-    <string>com.user.see.sync</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>${SEE_DIR}/github_sync.sh</string>
-    </array>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>StartInterval</key>
-    <integer>21600</integer>
-    <key>StandardErrorPath</key>
-    <string>${SEE_DIR}/github_sync.log</string>
-    <key>StandardOutPath</key>
-    <string>${SEE_DIR}/github_sync.log</string>
+	<key>Label</key>
+	<string>com.user.see.sync</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/bin/sh</string>
+		<string>-c</string>
+		<string>git diff --quiet -- *.csv || git -c commit.gpgsign=false commit -qm ud -- *.csv; git push -q</string>
+	</array>
+	<key>WorkingDirectory</key>
+	<string>${SEE_DIR}</string>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>StartInterval</key>
+	<integer>900</integer>
+	<key>StandardOutPath</key>
+	<string>${SEE_DIR}/sync.log</string>
+	<key>StandardErrorPath</key>
+	<string>${SEE_DIR}/sync.log</string>
 </dict>
 </plist>
 EOF
 
-chmod +x "$SEE_DIR/launch.sh"
-echo "LaunchAgent file created at $AGENT_FILE"
-chmod +x "$SEE_DIR/github_sync.sh"
+for label in com.user.see com.user.see.sync; do
+    launchctl bootout "$DOMAIN/$label" 2>/dev/null || true
+done
+# a `see` started by hand would write the same CSVs as the launchd one
+pkill -x see || true
 
-echo "unloading any existing LaunchAgent..."
-launchctl unload "$AGENT_FILE" 2>/dev/null || true
-echo "loading LaunchAgent..."
-launchctl load -w "$AGENT_FILE"
+for label in com.user.see com.user.see.sync; do
+    launchctl bootstrap "$DOMAIN" "$AGENT_DIR/$label.plist"
+done
 
-echo "loading sync LaunchAgent..."
-launchctl unload "$SYNC_AGENT_FILE" 2>/dev/null || true
-launchctl load -w "$SYNC_AGENT_FILE"
-echo "agents installed!"
-
-LOADED=$(launchctl list | grep com.user.see || echo "not found")
-if [[ "$LOADED" != "not found" ]]; then
-    echo "LaunchAgent successfully installed and loaded!"
-else
-    echo "warning: LaunchAgent may not have loaded correctly."
-    echo "you can try manually with: launchctl load -w $AGENT_FILE"
-fi
-
-echo "to remove, use: launchctl unload $AGENT_FILE && rm $AGENT_FILE"
+echo "installed. restart: launchctl kickstart -k $DOMAIN/com.user.see"
+echo "remove: launchctl bootout $DOMAIN/com.user.see; launchctl bootout $DOMAIN/com.user.see.sync"
