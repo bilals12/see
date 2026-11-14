@@ -33,7 +33,6 @@ cat > "$AGENT_DIR/com.user.see.plist" << EOF
 </plist>
 EOF
 
-# unsigned commits: launchd cannot answer an SSH signing passphrase prompt
 cat > "$AGENT_DIR/com.user.see.sync.plist" << EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -43,9 +42,7 @@ cat > "$AGENT_DIR/com.user.see.sync.plist" << EOF
 	<string>com.user.see.sync</string>
 	<key>ProgramArguments</key>
 	<array>
-		<string>/bin/sh</string>
-		<string>-c</string>
-		<string>git diff --quiet -- *.csv || git -c commit.gpgsign=false commit -qm ud -- *.csv; git push -q</string>
+		<string>${SEE_DIR}/sync.sh</string>
 	</array>
 	<key>WorkingDirectory</key>
 	<string>${SEE_DIR}</string>

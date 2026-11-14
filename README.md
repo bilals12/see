@@ -6,7 +6,7 @@ A minimal macOS activity tracker for keyboard and mouse use. The chart is on [my
 
 - `see` counts keypresses, mouse movement (in meters), and left, right, and middle clicks.
 - Every 5 minutes, `see` writes `past_24_hours_data.csv` (5-minute intervals for the last 24 hours) and `cumulative_data.csv` (totals since the first run).
-- Every 15 minutes, a LaunchAgent commits the two CSV files and pushes them.
+- Every 15 minutes, a LaunchAgent runs `sync.sh`. The script adds the new rows to `history.csv` (5-minute intervals for the last 7 days), then commits the CSV files and pushes them.
 - The website reads the CSV files from `raw.githubusercontent.com` when the page loads. A new data commit does not start a site build.
 
 ## Install
@@ -16,9 +16,9 @@ make
 ./install_agent.sh
 ```
 
-`install_agent.sh` installs two LaunchAgents. `com.user.see` keeps `see` running and starts it again after a reboot. `com.user.see.sync` pushes the data.
+`install_agent.sh` installs two LaunchAgents. `com.user.see` keeps `see` running and starts it again after a reboot. `com.user.see.sync` runs `sync.sh`.
 
-macOS asks for the Input Monitoring permission for the `see` binary. Each `make` makes a new binary, so grant the permission again after a rebuild. Then restart `see`:
+Add the `see` binary in System Settings > Privacy & Security > Input Monitoring. The entry matches only one build. After each `make`, delete the old `see` entry and add the binary again. If you only turn on the old entry, macOS still denies the permission. Then restart `see`:
 
 ```bash
 launchctl kickstart -k gui/$(id -u)/com.user.see
