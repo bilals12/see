@@ -1,5 +1,4 @@
 timestamp,keypresses,mousemoves,leftclicks,rightclicks,middleclicks
-1795758641,33,9.25,26,0,0
 1795782855,0,0.00,0,0,0
 1795789614,0,0.00,0,0,0
 1795789914,176,4.29,55,0,0
@@ -160,4 +159,7 @@ timestamp,keypresses,mousemoves,leftclicks,rightclicks,middleclicks
 1795843303,0,0.00,0,0,0
 1795843603,0,0.00,0,0,0
 1795843903,0,0.00,0,0,0
-cumulative,19851,491.09,3522,13,0
+1795845120,0,0.00,0,0,0
+1795845421,0,0.00,0,0,0
+1795845721,0,0.00,0,0,0
+cumulative,19818,481.85,3496,13,0
